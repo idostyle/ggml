@@ -14,8 +14,8 @@
 
 //#define GGML_ALLOCATOR_DEBUG
 
-//#define AT_PRINTF(...) GGML_LOG_DEBUG(__VA_ARGS__)
-#define AT_PRINTF(...)
+#define AT_PRINTF(...) GGML_LOG_DEBUG(__VA_ARGS__)
+//#define AT_PRINTF(...)
 
 
 static bool ggml_is_view(const struct ggml_tensor * t) {
@@ -190,7 +190,7 @@ static size_t ggml_dyn_tallocr_alloc(struct ggml_dyn_tallocr * alloc, size_t siz
         }
     }
 
-    AT_PRINTF("block %d, offset %zu\n", best_fit_block, offset);
+    AT_PRINTF("%s: block %d, offset %zu\n", __func__, best_fit_block, offset);
 
 #ifdef GGML_ALLOCATOR_DEBUG
     add_allocated_tensor(alloc, offset, tensor);
@@ -517,18 +517,18 @@ static void ggml_gallocr_allocate_node(ggml_gallocr_t galloc, struct ggml_tensor
 
                 // if the node's data is external, then we cannot re-use it
                 if (!ggml_gallocr_is_own(galloc, parent)) {
-                    AT_PRINTF("not reusing parent %s for %s as %p is external\n", parent->name, node->name, parent->data);
+                    AT_PRINTF("%s: not reusing parent %s for %s as %p is external\n", __func__, parent->name, node->name, parent->data);
                     continue;
                 }
 
                 // outputs cannot be reused
                 if (parent->flags & GGML_TENSOR_FLAG_OUTPUT || (parent->view_src != NULL && parent->view_src->flags & GGML_TENSOR_FLAG_OUTPUT)) {
-                    AT_PRINTF("not reusing parent %s for %s as it is an output\n", parent->name, node->name);
+                    AT_PRINTF("%s: not reusing parent %s for %s as it is an output\n", __func__, parent->name, node->name);
                     continue;
                 }
 
                 if (!ggml_are_same_layout(node, parent)) {
-                    AT_PRINTF("not reusing parent %s for %s as layouts are different\n", parent->name, node->name);
+                    AT_PRINTF("%s: not reusing parent %s for %s as layouts are different\n", __func__, parent->name, node->name);
                     continue;
                 }
 
@@ -538,7 +538,7 @@ static void ggml_gallocr_allocate_node(ggml_gallocr_t galloc, struct ggml_tensor
                         struct ggml_tensor * view_src = parent->view_src;
                         struct hash_node * view_src_hn = ggml_gallocr_hash_get(galloc, view_src);
                         if (view_src_hn->n_views == 1 && view_src_hn->n_children == 0 && view_src->data == parent->data) {
-                            AT_PRINTF("reusing view parent %s (%s) for %s\n", parent->name, view_src->name, node->name);
+                            AT_PRINTF("%s: reusing view parent %s (%s) for %s\n", __func__, parent->name, view_src->name, node->name);
                             assert(view_src_hn->offset == p_hn->offset);
                             hn->buffer_id = p_hn->buffer_id;
                             hn->offset = p_hn->offset;
@@ -547,7 +547,7 @@ static void ggml_gallocr_allocate_node(ggml_gallocr_t galloc, struct ggml_tensor
                             return;
                         }
                     } else {
-                        AT_PRINTF("reusing parent %s for %s\n", parent->name, node->name);
+                        AT_PRINTF("%s: reusing parent %s for %s\n", __func__, parent->name, node->name);
                         hn->buffer_id = p_hn->buffer_id;
                         hn->offset = p_hn->offset;
                         p_hn->allocated = false; // avoid freeing the parent
@@ -563,6 +563,7 @@ static void ggml_gallocr_allocate_node(ggml_gallocr_t galloc, struct ggml_tensor
         size_t offset = ggml_dyn_tallocr_alloc(alloc, size, node);
         hn->buffer_id = buffer_id;
         hn->offset = offset;
+        AT_PRINTF("%s: allocating %s with size %.2f MB in buffer %d at offset %zu\n", __func__, node->name, size / 1024.0 / 1024.0, buffer_id, offset);
         return;
     }
 }
@@ -570,7 +571,7 @@ static void ggml_gallocr_allocate_node(ggml_gallocr_t galloc, struct ggml_tensor
 static void ggml_gallocr_free_node(ggml_gallocr_t galloc, struct ggml_tensor * node) {
     // graph outputs are never freed
     if (node->flags & GGML_TENSOR_FLAG_OUTPUT) {
-        AT_PRINTF("not freeing output %s\n", node->name);
+        AT_PRINTF("%s: not freeing output %s\n", __func__, node->name);
         return;
     }
 
@@ -650,7 +651,7 @@ static void ggml_gallocr_alloc_graph_impl(ggml_gallocr_t galloc, struct ggml_cgr
         // allocate node
         ggml_gallocr_allocate_node(galloc, node, buffer_id);
 
-        AT_PRINTF("exec: %s (%s) <= ", ggml_op_desc(node), node->name);
+        AT_PRINTF("%s: exec: %s (%s) <= ", __func__, ggml_op_desc(node), node->name);
         for (int j = 0; j < GGML_MAX_SRC; j++) {
             struct ggml_tensor * parent = node->src[j];
             if (parent == NULL) {
@@ -672,7 +673,7 @@ static void ggml_gallocr_alloc_graph_impl(ggml_gallocr_t galloc, struct ggml_cgr
             struct hash_node * p_hn = ggml_gallocr_hash_get(galloc, parent);
             p_hn->n_children -= 1;
 
-            AT_PRINTF("parent %s: %d children, %d views, allocated: %d\n",
+            AT_PRINTF("%s: parent %s: %d children, %d views, allocated: %d\n", __func__,
                 parent->name, p_hn->n_children, p_hn->n_views, p_hn->allocated);
 
             if (p_hn->n_children == 0 && p_hn->n_views == 0) {
@@ -680,7 +681,7 @@ static void ggml_gallocr_alloc_graph_impl(ggml_gallocr_t galloc, struct ggml_cgr
                     struct ggml_tensor * view_src = parent->view_src;
                     struct hash_node * view_src_hn = ggml_gallocr_hash_get(galloc, view_src);
                     view_src_hn->n_views -= 1;
-                    AT_PRINTF("view_src %s: %d children, %d views\n",
+                    AT_PRINTF("%s: view_src %s: %d children, %d views\n", __func__,
                         view_src->name, view_src_hn->n_children, view_src_hn->n_views);
                     if (view_src_hn->n_views == 0 && view_src_hn->n_children == 0 && view_src_hn->allocated) {
                         ggml_gallocr_free_node(galloc, view_src);
@@ -780,9 +781,7 @@ bool ggml_gallocr_reserve_n(ggml_gallocr_t galloc, struct ggml_cgraph * graph, c
 
         // even if there are no tensors allocated in this buffer, we still need to allocate it to initialize views
         if (new_size > cur_size || galloc->buffers[i] == NULL) {
-#ifndef NDEBUG
             GGML_LOG_DEBUG("%s: reallocating %s buffer from size %.02f MiB to %.02f MiB\n", __func__, ggml_backend_buft_name(galloc->bufts[i]), cur_size / 1024.0 / 1024.0, new_size / 1024.0 / 1024.0);
-#endif
 
             ggml_backend_buffer_free(galloc->buffers[i]);
             galloc->buffers[i] = ggml_backend_buft_alloc_buffer(galloc->bufts[i], new_size);
@@ -885,16 +884,12 @@ static bool ggml_gallocr_needs_realloc(ggml_gallocr_t galloc, struct ggml_cgraph
 bool ggml_gallocr_alloc_graph(ggml_gallocr_t galloc, struct ggml_cgraph * graph) {
     if (ggml_gallocr_needs_realloc(galloc, graph)) {
         if (galloc->n_buffers == 1) {
-#ifndef NDEBUG
             GGML_LOG_DEBUG("%s: reallocating buffers automatically\n", __func__);
-#endif
             if (!ggml_gallocr_reserve(galloc, graph)) {
                 return false;
             }
         } else {
-#ifndef NDEBUG
             GGML_LOG_DEBUG("%s: cannot reallocate multi buffer graph automatically, call reserve\n", __func__);
-#endif
             return false;
         }
     }
@@ -956,9 +951,7 @@ static bool alloc_tensor_range(struct ggml_context * ctx,
         ggml_backend_buffer_t ** buffers, size_t * n_buffers) {
     ggml_backend_buffer_t buffer = ggml_backend_buft_alloc_buffer(buft, size);
     if (buffer == NULL) {
-#ifndef NDEBUG
         GGML_LOG_DEBUG("%s: failed to allocate %s buffer of size %zu\n", __func__, ggml_backend_buft_name(buft), size);
-#endif
         for (size_t i = 0; i < *n_buffers; i++) {
             ggml_backend_buffer_free((*buffers)[i]);
         }
@@ -1038,9 +1031,7 @@ ggml_backend_buffer_t ggml_backend_alloc_ctx_tensors_from_buft(struct ggml_conte
     }
 
     if (n_buffers == 0) {
-#ifndef NDEBUG
         GGML_LOG_DEBUG("%s: all tensors in the context are already allocated\n", __func__);
-#endif
         return NULL;
     }
 
