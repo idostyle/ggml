@@ -407,6 +407,35 @@ ggml_gallocr_t ggml_gallocr_new_n(ggml_backend_buffer_type_t * bufts, int n_bufs
     return galloc;
 }
 
+ggml_gallocr_t ggml_gallocr_new_n_multi(ggml_backend_buffer_type_t * bufts, int n_bufs) {
+    ggml_gallocr_t galloc = (ggml_gallocr_t)calloc(1, sizeof(struct ggml_gallocr));
+    GGML_ASSERT(galloc != NULL);
+
+    galloc->bufts = calloc(n_bufs, sizeof(ggml_backend_buffer_type_t));
+    GGML_ASSERT(galloc->bufts != NULL);
+
+    galloc->buffers = calloc(n_bufs, sizeof(ggml_backend_buffer_t));
+    GGML_ASSERT(galloc->buffers != NULL);
+
+    galloc->buf_tallocs = calloc(n_bufs, sizeof(struct ggml_dyn_tallocr *));
+    GGML_ASSERT(galloc->buf_tallocs != NULL);
+
+    for (int i = 0; i < n_bufs; i++) {
+        galloc->bufts[i] = bufts[i];
+        galloc->buffers[i] = NULL;
+
+        // don't check if the same buffer type is used multiple times
+
+        if (galloc->buf_tallocs[i] == NULL) {
+            size_t alignment = ggml_backend_buft_get_alignment(bufts[i]);
+            galloc->buf_tallocs[i] = ggml_dyn_tallocr_new(alignment);
+        }
+    }
+    galloc->n_buffers = n_bufs;
+
+    return galloc;
+}
+
 ggml_gallocr_t ggml_gallocr_new(ggml_backend_buffer_type_t buft) {
     return ggml_gallocr_new_n(&buft, 1);
 }
